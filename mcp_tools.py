@@ -7,8 +7,18 @@ from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, ConfigDict, create_model
 from langchain_core.tools import StructuredTool
 
-from server.models import MCPServiceConfig, ToolSummary
-from server.services.mcp_adapter import get_mcp_adapter
+try:
+    from server.models import MCPServiceConfig, ToolSummary
+    from server.services.mcp_adapter import get_mcp_adapter
+    _MCP_AVAILABLE = True
+except Exception:
+    MCPServiceConfig = None  # type: ignore
+    ToolSummary = None  # type: ignore
+
+    def get_mcp_adapter():  # type: ignore
+        return None
+
+    _MCP_AVAILABLE = False
 
 
 DEFAULT_MCP_CONFIG_PATHS = [
@@ -99,6 +109,9 @@ def _tool_from_summary(adapter, summary: ToolSummary, profile_id: str) -> Struct
 
 
 def load_mcp_tools(config: Optional[Dict[str, Any]] = None, profile_id: str = "default") -> List[StructuredTool]:
+    if not _MCP_AVAILABLE:
+        return []
+
     config = config or {}
     mcp_config = config.get("mcp") if isinstance(config.get("mcp"), dict) else {}
 
