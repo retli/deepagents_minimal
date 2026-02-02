@@ -60,17 +60,37 @@ def build_agent():
 
     skills_dir = os.getenv("DEEPAGENTS_SKILLS_DIR", "./skills")
     skills_dir = config.get("skills_dir", skills_dir)
-    skills = [skills_dir] if os.path.isdir(skills_dir) else None
+    
+    # Resolve absolute path for skills
+    base_dir = Path(__file__).resolve().parent
+    if not os.path.isabs(skills_dir):
+        skills_path = (base_dir / skills_dir).resolve()
+    else:
+        skills_path = Path(skills_dir).resolve()
+        
+    skills_route = {}
+    skills = None
+    
+    if skills_path.is_dir():
+        skills = ["/skills/"]
+        # Enable virtual_mode=True to handle path resolution correctly (treating input paths as relative to root_dir)
+        skills_route = {"/skills/": FilesystemBackend(root_dir=str(skills_path), virtual_mode=True)}
+    else:
+        print(f"Warning: Skills directory not found at {skills_path}")
 
     mcp_tools = load_mcp_tools(config=config)
 
     memories_dir = os.getenv("DEEPAGENTS_MEMORIES_DIR", "./memories")
     memories_dir = config.get("memories_dir", memories_dir)
     os.makedirs(memories_dir, exist_ok=True)
-    backend = lambda rt: CompositeBackend(
-        default=StateBackend(rt),
-        routes={"/memories/": FilesystemBackend(root_dir=memories_dir)},
-    )
+    
+    def create_backend(rt):
+        routes = {"/memories/": FilesystemBackend(root_dir=memories_dir, virtual_mode=True)}
+        routes.update(skills_route)
+        return CompositeBackend(
+            default=StateBackend(rt),
+            routes=routes,
+        )
 
     memory_files = config.get("memory_files")
     if not isinstance(memory_files, list):
@@ -88,7 +108,7 @@ def build_agent():
                 response_format = ToolStrategy(
                     schema,
                     tool_message_content=rf.get("tool_message_content"),
-                    handle_errors=rf.get("handle_errors", True),
+                    handle_errors=rf.get("handle_errors", True)
                 )
             else:
                 response_format = AutoStrategy(schema)
@@ -103,7 +123,7 @@ Return only the final answer to the user and do not reveal hidden reasoning. If 
         model=model,
         skills=skills,
         tools=mcp_tools or None,
-        backend=backend,
+        backend=create_backend,
         memory=memory_files,
         response_format=response_format,
         system_prompt=react_prompt,

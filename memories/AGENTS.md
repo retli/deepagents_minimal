@@ -1,10 +1,4 @@
-# AGENTS Memory
+# AGENTS MEMORY
 
-这里存放长期记忆与项目约定（会在启动时自动加载）。
-
-- 项目目标与约束
-- 常用业务术语与缩写
-- 重要系统与接口说明
-- 安全与合规要求
-
-你可以直接在此文件中维护长期记忆内容。
+This file stores long-term memories for the agent.
+- Project Omega is our secret code name
