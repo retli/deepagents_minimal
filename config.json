@@ -4,7 +4,9 @@
   },
   "skills_dir": "./skills",
   "memories_dir": "./memories",
-  "memory_files": ["/memories/AGENTS.md"],
+  "memory_files": [
+    "/memories/AGENTS.md"
+  ],
   "react_prompt": "Use ReAct-style reasoning for tool use. Internally follow Thought -> Action -> Observation. Return only the final answer to the user and do not reveal hidden reasoning. If a tool is needed, call it.",
   "response_format": null,
   "mcp": {
@@ -13,7 +15,7 @@
     "services": []
   },
   "env": {
-    "OPENAI_API_KEY": "5be9af4d-9c7c-41bf-bda5-33ab71f4e6ef",
+    "OPENAI_API_KEY": "***",
     "OPENAI_BASE_URL": "https://ark.cn-beijing.volces.com/api/v3"
   }
 }
