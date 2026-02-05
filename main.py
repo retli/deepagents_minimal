@@ -1,12 +1,36 @@
-import json
+# ============ 公司环境：强制全局禁用 SSL 验证（必须在其他导入之前） ============
 import os
+import ssl
+
+os.environ["PYTHONHTTPSVERIFY"] = "0"
+os.environ["CURL_CA_BUNDLE"] = ""
+os.environ["REQUESTS_CA_BUNDLE"] = ""
+os.environ["SSL_CERT_FILE"] = ""
+os.environ["SSL_CERT_DIR"] = ""
+
+# 创建不验证的 SSL 上下文并设为默认
+try:
+    _unverified_context = ssl.create_default_context()
+    _unverified_context.check_hostname = False
+    _unverified_context.verify_mode = ssl.CERT_NONE
+    ssl._create_default_https_context = lambda: _unverified_context
+except Exception:
+    pass
+
+# ============ 正常导入 ============
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import httpx
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
+from langchain_openai import ChatOpenAI
 from langchain.agents.structured_output import AutoStrategy, ProviderStrategy, ToolStrategy
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
@@ -56,7 +80,27 @@ def build_agent():
 
     model_name = os.getenv("DEEPAGENTS_MODEL", "openai:gpt-5")
     model_name = config.get("model", {}).get("name", model_name)
-    model = init_chat_model(model=model_name)
+    
+    # 公司环境适配：当 provider 为 openai 时，使用自定义 httpx 客户端（跳过 SSL 验证）
+    if model_name.startswith("openai:"):
+        actual_model = model_name.split(":", 1)[1]
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        base_url = os.environ.get("OPENAI_BASE_URL", "")
+        
+        # 创建禁用 SSL 的 httpx 客户端
+        http_client = httpx.Client(verify=False)
+        http_async_client = httpx.AsyncClient(verify=False)
+        
+        model = ChatOpenAI(
+            model=actual_model,
+            api_key=api_key,
+            base_url=base_url,
+            http_client=http_client,
+            http_async_client=http_async_client,
+        )
+    else:
+        # 其他 provider 使用 init_chat_model
+        model = init_chat_model(model=model_name)
 
     skills_dir = os.getenv("DEEPAGENTS_SKILLS_DIR", "./skills")
     skills_dir = config.get("skills_dir", skills_dir)
