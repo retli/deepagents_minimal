@@ -78,19 +78,22 @@ def build_agent():
     config = _load_config()
     _apply_env_from_config(config)
 
-    model_name = os.getenv("DEEPAGENTS_MODEL", "openai:gpt-5")
-    model_name = config.get("model", {}).get("name", model_name)
+    model_config = config.get("model", {})
+    model_name = os.getenv("DEEPAGENTS_MODEL", "gpt-5")
+    model_name = model_config.get("name", model_name)
     
-    # 公司环境适配：当 provider 为 openai 时，使用自定义 httpx 客户端（跳过 SSL 验证）
+    # 去掉可能存在的 openai: 前缀（兼容旧配置）
     if model_name.startswith("openai:"):
-        actual_model = model_name.split(":", 1)[1]
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        base_url = os.environ.get("OPENAI_BASE_URL", "")
-        
+        model_name = model_name.split(":", 1)[1]
+    
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "")
+    
+    # 公司环境适配：只要配置了 OPENAI_BASE_URL，就使用自定义 ChatOpenAI（跳过 SSL 验证）
+    if base_url:
         # 公司环境特殊 headers
         # apikey: 与 api_key 相同
         # Authorization: 可选的额外认证 (ACCESSCODE)
-        model_config = config.get("model", {})
         default_headers = {"apikey": api_key}
         
         # 支持 accesscode / authorization 配置
@@ -103,7 +106,7 @@ def build_agent():
         http_async_client = httpx.AsyncClient(verify=False)
         
         model = ChatOpenAI(
-            model=actual_model,
+            model=model_name,
             api_key=api_key,
             base_url=base_url,
             default_headers=default_headers,
@@ -111,8 +114,8 @@ def build_agent():
             http_async_client=http_async_client,
         )
     else:
-        # 其他 provider 使用 init_chat_model
-        model = init_chat_model(model=model_name)
+        # 标准 OpenAI 或其他 provider 使用 init_chat_model
+        model = init_chat_model(model=f"openai:{model_name}")
 
     skills_dir = os.getenv("DEEPAGENTS_SKILLS_DIR", "./skills")
     skills_dir = config.get("skills_dir", skills_dir)

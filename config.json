@@ -1,6 +1,7 @@
 {
   "model": {
-    "name": "openai:doubao-seed-1-8-251228"
+    "name": "doubao-seed-1-8-251228",
+    "accesscode": ""
   },
   "skills_dir": "./skills",
   "memories_dir": "./memories",
