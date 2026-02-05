@@ -1,164 +1,131 @@
+"""MCP Tools loader - 简化版本，直接使用 langchain-mcp-adapters"""
+
 import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, create_model
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 
+# 尝试导入 langchain-mcp-adapters
 try:
-    from server.models import MCPServiceConfig, ToolSummary
-    from server.services.mcp_adapter import get_mcp_adapter
+    from langchain_mcp_adapters.client import MultiServerMCPClient
     _MCP_AVAILABLE = True
-except Exception:
-    MCPServiceConfig = None  # type: ignore
-    ToolSummary = None  # type: ignore
-
-    def get_mcp_adapter():  # type: ignore
-        return None
-
+except ImportError:
     _MCP_AVAILABLE = False
+    MultiServerMCPClient = None  # type: ignore
 
 
-DEFAULT_MCP_CONFIG_PATHS = [
-    Path(__file__).resolve().parent.parent / ".vscode" / "mcp.json",
-]
-
-
-def _load_mcp_services_from_file(path: Path) -> List[MCPServiceConfig]:
-    if not path.exists():
-        return []
-    data = json.loads(path.read_text(encoding="utf-8"))
-    servers = data.get("servers") or {}
-    services: List[MCPServiceConfig] = []
-    for name, config in servers.items():
-        url = config.get("url")
-        if not url:
-            continue
-        services.append(
-            MCPServiceConfig(
-                name=name,
-                sse_url=url,
-                enabled=True,
-            )
-        )
-    return services
-
-
-def _json_schema_to_model(name: str, schema: Optional[Dict[str, Any]]) -> Type[BaseModel]:
-    if not schema:
-        return create_model(f"{name}Args", __config__=ConfigDict(extra="allow"))
-
-    properties = schema.get("properties") or {}
-    required = set(schema.get("required") or [])
-
-    fields: Dict[str, Any] = {}
-    for prop, spec in properties.items():
-        py_type = _json_type_to_py(spec)
-        default = ... if prop in required else None
-        fields[prop] = (py_type, default)
-
-    if not fields:
-        return create_model(f"{name}Args", __config__=ConfigDict(extra="allow"))
-
-    return create_model(f"{name}Args", __config__=ConfigDict(extra="allow"), **fields)
-
-
-def _json_type_to_py(spec: Any) -> Any:
-    if not isinstance(spec, dict):
-        return Any
-
-    json_type = spec.get("type")
-    if isinstance(json_type, list):
-        # choose first non-null type
-        json_type = next((t for t in json_type if t != "null"), None)
-
-    if json_type == "string":
-        return str
-    if json_type == "integer":
-        return int
-    if json_type == "number":
-        return float
-    if json_type == "boolean":
-        return bool
-    if json_type == "object":
-        return Dict[str, Any]
-    if json_type == "array":
-        item_spec = spec.get("items") or {}
-        return List[_json_type_to_py(item_spec)]
-    return Any
-
-
-def _tool_from_summary(adapter, summary: ToolSummary, profile_id: str) -> StructuredTool:
-    args_schema = _json_schema_to_model(summary.name, summary.input_schema)
-
-    async def _acall(**kwargs):
-        return await adapter.call_tool(summary.name, kwargs, profile_id=profile_id)
-
-    def _call(**kwargs):
-        return asyncio.run(_acall(**kwargs))
-
-    return StructuredTool.from_function(
-        func=_call,
-        coroutine=_acall,
-        name=summary.name,
-        description=summary.desc or f"MCP tool: {summary.name}",
-        args_schema=args_schema,
-    )
-
-
-def load_mcp_tools(config: Optional[Dict[str, Any]] = None, profile_id: str = "default") -> List[StructuredTool]:
+def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
+    """
+    从 config 加载 MCP tools。
+    
+    config.json 格式:
+    {
+      "mcp": {
+        "disabled": false,
+        "servers": {
+          "server_name": "http://localhost:3000/sse",
+          "another_server": "http://localhost:3001/sse"
+        }
+      }
+    }
+    """
     if not _MCP_AVAILABLE:
+        print("⚠️  langchain-mcp-adapters 未安装，跳过 MCP tools 加载")
+        print("   安装命令: pip install langchain-mcp-adapters")
         return []
 
     config = config or {}
     mcp_config = config.get("mcp") if isinstance(config.get("mcp"), dict) else {}
 
+    # 检查是否禁用
     disabled = os.getenv("DEEPAGENTS_MCP_DISABLED")
     if disabled is None:
         disabled = str(mcp_config.get("disabled", ""))
     if str(disabled).lower() in {"1", "true", "yes"}:
         return []
 
-    services: List[MCPServiceConfig] = []
-
-    inline = os.getenv("DEEPAGENTS_MCP_SERVICES")
-    if inline:
+    # 收集所有 server 配置
+    servers: Dict[str, Dict[str, Any]] = {}
+    
+    # 方式1: 从 config.mcp.servers 读取 (简化格式: name -> url)
+    servers_config = mcp_config.get("servers")
+    if isinstance(servers_config, dict):
+        for name, url in servers_config.items():
+            if isinstance(url, str) and url:
+                servers[name] = {
+                    "url": url,
+                    "transport": "sse",
+                }
+            elif isinstance(url, dict):
+                # 也支持完整格式: name -> {url, transport, ...}
+                servers[name] = {
+                    "url": url.get("url", ""),
+                    "transport": url.get("transport", "sse"),
+                }
+    
+    # 方式2: 从环境变量 DEEPAGENTS_MCP_SERVERS 读取 (JSON 格式)
+    env_servers = os.getenv("DEEPAGENTS_MCP_SERVERS")
+    if env_servers:
         try:
-            for item in json.loads(inline):
-                services.append(MCPServiceConfig(**item))
+            parsed = json.loads(env_servers)
+            if isinstance(parsed, dict):
+                for name, url in parsed.items():
+                    if isinstance(url, str) and url:
+                        servers[name] = {"url": url, "transport": "sse"}
         except Exception:
             pass
-    else:
-        inline_config = mcp_config.get("services")
-        if isinstance(inline_config, list):
-            for item in inline_config:
-                if isinstance(item, dict):
-                    services.append(MCPServiceConfig(**item))
 
-    config_path = os.getenv("DEEPAGENTS_MCP_CONFIG")
-    if not config_path:
-        config_path = mcp_config.get("config_path")
-    if config_path:
-        services.extend(_load_mcp_services_from_file(Path(config_path)))
-    else:
-        for candidate in DEFAULT_MCP_CONFIG_PATHS:
-            services.extend(_load_mcp_services_from_file(candidate))
-
-    if not services:
+    if not servers:
         return []
 
-    adapter = get_mcp_adapter()
-    for svc in services:
-        adapter.upsert_service(svc, profile_id=profile_id)
-
-    tools: List[StructuredTool] = []
+    print(f"🔌 正在连接 MCP servers: {list(servers.keys())}")
+    
+    # 使用 MultiServerMCPClient 连接所有 server
+    tools: List[BaseTool] = []
+    
     try:
-        summaries = asyncio.run(adapter.list_tools(profile_id=profile_id))
-        for summary in summaries:
-            tools.append(_tool_from_summary(adapter, summary, profile_id))
-    except Exception:
+        # MultiServerMCPClient 需要特定格式的配置
+        mcp_servers_config = {}
+        for name, cfg in servers.items():
+            mcp_servers_config[name] = {
+                "url": cfg["url"],
+                "transport": cfg.get("transport", "sse"),
+            }
+        
+        # 同步加载 tools
+        tools = asyncio.run(_load_tools_async(mcp_servers_config))
+        print(f"✅ 已加载 {len(tools)} 个 MCP tools")
+        
+    except Exception as e:
+        print(f"❌ MCP tools 加载失败: {e}")
         return []
 
     return tools
+
+
+async def _load_tools_async(servers_config: Dict[str, Dict[str, Any]]) -> List[BaseTool]:
+    """异步加载 MCP tools"""
+    async with MultiServerMCPClient(servers_config) as client:
+        tools = client.get_tools()
+        return tools
+
+
+def _test_mcp():
+    """测试 MCP 连接"""
+    config_path = Path("./config.json")
+    if config_path.exists():
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    else:
+        config = {}
+    
+    tools = load_mcp_tools(config)
+    print(f"\n已加载的 tools:")
+    for tool in tools:
+        print(f"  - {tool.name}: {tool.description[:50]}..." if len(tool.description) > 50 else f"  - {tool.name}: {tool.description}")
+
+
+if __name__ == "__main__":
+    _test_mcp()

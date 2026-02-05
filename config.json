@@ -12,8 +12,9 @@
   "response_format": null,
   "mcp": {
     "disabled": false,
-    "config_path": "../.vscode/mcp.json",
-    "services": []
+    "servers": {
+      "example": "http://localhost:3000/sse"
+    }
   },
   "env": {
     "OPENAI_API_KEY": "***",
