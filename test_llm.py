@@ -72,11 +72,25 @@ def test_llm():
         model_name = model_name.split(":", 1)[1]
     
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    base_url = os.environ.get("OPENAI_BASE_URL", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "").strip().rstrip("/")
+    
+    # URL 规范化
+    original_base_url = base_url
+    if base_url:
+        if base_url.endswith("/v1/chat/completions"):
+            base_url = base_url[:-len("/chat/completions")]
+        elif base_url.endswith("/chat/completions"):
+            base_url = base_url[:-len("/chat/completions")]
+        
+        keep_base_path = os.getenv("LLM_KEEP_BASE_PATH", "").lower() in {"1", "true", "yes"}
+        if not keep_base_path and not base_url.endswith("/v1"):
+            base_url = base_url + "/v1"
     
     print(f"\n📋 配置信息:")
     print(f"   模型: {model_name}")
     print(f"   API Base: {base_url or '(默认 OpenAI)'}")
+    if original_base_url != base_url:
+        print(f"   (原始输入: {original_base_url})")
     print(f"   API Key: {'***' + api_key[-4:] if len(api_key) > 4 else '(未设置)'}")
     
     # 准备 headers

@@ -87,7 +87,21 @@ def build_agent():
         model_name = model_name.split(":", 1)[1]
     
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    base_url = os.environ.get("OPENAI_BASE_URL", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "").strip().rstrip("/")
+    
+    # URL 规范化：ChatOpenAI 会自动在 base_url 后面拼接 /chat/completions
+    # 所以 base_url 应该是 https://xxx/v1 这种格式
+    if base_url:
+        # 去掉用户可能填写的 /chat/completions 后缀
+        if base_url.endswith("/v1/chat/completions"):
+            base_url = base_url[:-len("/chat/completions")]
+        elif base_url.endswith("/chat/completions"):
+            base_url = base_url[:-len("/chat/completions")]
+        
+        # 如果末尾没有 /v1，自动补上（除非设置了 LLM_KEEP_BASE_PATH=1）
+        keep_base_path = os.getenv("LLM_KEEP_BASE_PATH", "").lower() in {"1", "true", "yes"}
+        if not keep_base_path and not base_url.endswith("/v1"):
+            base_url = base_url + "/v1"
     
     # 公司环境适配：只要配置了 OPENAI_BASE_URL，就使用自定义 ChatOpenAI（跳过 SSL 验证）
     if base_url:
