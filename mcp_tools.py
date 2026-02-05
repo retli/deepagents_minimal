@@ -108,9 +108,9 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
 
 async def _load_tools_async(servers_config: Dict[str, Dict[str, Any]]) -> List[BaseTool]:
     """异步加载 MCP tools"""
-    async with MultiServerMCPClient(servers_config) as client:
-        tools = client.get_tools()
-        return tools
+    client = MultiServerMCPClient(servers_config)
+    tools = await client.get_tools()
+    return tools
 
 
 def _test_mcp():
