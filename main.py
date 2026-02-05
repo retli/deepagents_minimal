@@ -87,6 +87,17 @@ def build_agent():
         api_key = os.environ.get("OPENAI_API_KEY", "")
         base_url = os.environ.get("OPENAI_BASE_URL", "")
         
+        # 公司环境特殊 headers
+        # apikey: 与 api_key 相同
+        # Authorization: 可选的额外认证 (ACCESSCODE)
+        model_config = config.get("model", {})
+        default_headers = {"apikey": api_key}
+        
+        # 支持 accesscode / authorization 配置
+        accesscode = model_config.get("accesscode") or model_config.get("authorization") or os.environ.get("ACCESSCODE", "")
+        if accesscode:
+            default_headers["Authorization"] = accesscode
+        
         # 创建禁用 SSL 的 httpx 客户端
         http_client = httpx.Client(verify=False)
         http_async_client = httpx.AsyncClient(verify=False)
@@ -95,6 +106,7 @@ def build_agent():
             model=actual_model,
             api_key=api_key,
             base_url=base_url,
+            default_headers=default_headers,
             http_client=http_client,
             http_async_client=http_async_client,
         )
