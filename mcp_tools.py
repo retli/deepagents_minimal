@@ -26,16 +26,16 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
       "mcp": {
         "disabled": false,
         "servers": {
-          "server_name": "http://localhost:3000/mcp",
+          "server_name": "http://localhost:3000/sse",
           "another": {
-            "url": "http://localhost:3001/mcp",
-            "transport": "http"
+            "url": "http://localhost:3001/sse",
+            "transport": "sse"
           }
         }
       }
     }
     
-    transport 支持: "http" (SSE/HTTP), "stdio" (本地进程)
+    transport 支持: "sse" (Server-Sent Events), "http" (Streamable HTTP), "stdio" (本地进程)
     """
     if not _MCP_AVAILABLE:
         print("⚠️  langchain-mcp-adapters 未安装，跳过 MCP tools 加载")
@@ -61,17 +61,30 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
         for name, value in servers_config.items():
             if isinstance(value, str) and value:
                 # 简化格式: name -> url
+                # 自动判断 transport 类型
+                transport = "sse"  # 默认使用 SSE
+                if "/mcp" in value and "/sse" not in value:
+                    transport = "http"  # streamable http
+                
                 servers[name] = {
                     "url": value,
-                    "transport": "http",  # HTTP/SSE transport
+                    "transport": transport,
+                    "timeout": 30,  # 增加超时时间
+                    "sse_read_timeout": 300,
                 }
             elif isinstance(value, dict):
                 # 完整格式
                 if value.get("url"):
+                    transport = value.get("transport", "sse")
                     servers[name] = {
                         "url": value["url"],
-                        "transport": value.get("transport", "http"),
+                        "transport": transport,
+                        "timeout": value.get("timeout", 30),
+                        "sse_read_timeout": value.get("sse_read_timeout", 300),
                     }
+                    # 传递 headers 如果有
+                    if value.get("headers"):
+                        servers[name]["headers"] = value["headers"]
                 elif value.get("command"):
                     # stdio 模式
                     servers[name] = {
@@ -88,7 +101,7 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
             if isinstance(parsed, dict):
                 for name, url in parsed.items():
                     if isinstance(url, str) and url:
-                        servers[name] = {"url": url, "transport": "http"}
+                        servers[name] = {"url": url, "transport": "sse", "timeout": 30}
         except Exception:
             pass
 
@@ -96,6 +109,8 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
         return []
 
     print(f"🔌 正在连接 MCP servers: {list(servers.keys())}")
+    for name, cfg in servers.items():
+        print(f"   - {name}: {cfg.get('url') or cfg.get('command')} ({cfg.get('transport')})")
     
     tools: List[BaseTool] = []
     
@@ -110,13 +125,29 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
         # Python 3.11+ TaskGroup 异常
         print(f"❌ MCP 连接失败:")
         for exc in eg.exceptions:
-            print(f"   - {type(exc).__name__}: {exc}")
+            _print_connection_error(exc)
         return []
     except Exception as e:
-        print(f"❌ MCP tools 加载失败: {type(e).__name__}: {e}")
+        print(f"❌ MCP tools 加载失败:")
+        _print_connection_error(e)
         return []
 
     return tools
+
+
+def _print_connection_error(e: Exception):
+    """友好打印连接错误"""
+    error_type = type(e).__name__
+    error_msg = str(e)
+    
+    if "ConnectError" in error_type or "connect" in error_msg.lower():
+        print(f"   连接失败: 无法连接到服务器 - {error_msg}")
+        print("   💡 请检查: 1) MCP server 是否已启动  2) URL 是否正确  3) 网络是否可达")
+    elif "TimeoutError" in error_type or "timeout" in error_msg.lower():
+        print(f"   连接超时: {error_msg}")
+        print("   💡 尝试: 增加 config 中的 timeout 值")
+    else:
+        print(f"   {error_type}: {error_msg}")
 
 
 async def _load_tools_async(servers_config: Dict[str, Dict[str, Any]]) -> List[BaseTool]:
@@ -138,11 +169,14 @@ def _test_mcp():
         mcp_cfg = config.get("mcp", {})
         servers = mcp_cfg.get("servers", {})
         print(f"\n📋 配置的 servers:")
-        for name, value in servers.items():
-            if isinstance(value, str):
-                print(f"   {name}: {value}")
-            elif isinstance(value, dict):
-                print(f"   {name}: {value.get('url') or value.get('command')}")
+        if servers:
+            for name, value in servers.items():
+                if isinstance(value, str):
+                    print(f"   {name}: {value}")
+                elif isinstance(value, dict):
+                    print(f"   {name}: {value.get('url') or value.get('command')} (transport: {value.get('transport', 'sse')})")
+        else:
+            print("   (无)")
     else:
         config = {}
         print("\n⚠️  config.json 不存在")
