@@ -12,9 +12,7 @@
   "response_format": null,
   "mcp": {
     "disabled": false,
-    "servers": {
-      "example": "http://localhost:3000/sse"
-    }
+    "servers": {}
   },
   "env": {
     "OPENAI_API_KEY": "***",

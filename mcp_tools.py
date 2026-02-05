@@ -1,4 +1,4 @@
-"""MCP Tools loader - 简化版本，直接使用 langchain-mcp-adapters"""
+"""MCP Tools loader - 使用 langchain-mcp-adapters"""
 
 import asyncio
 import json
@@ -26,11 +26,16 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
       "mcp": {
         "disabled": false,
         "servers": {
-          "server_name": "http://localhost:3000/sse",
-          "another_server": "http://localhost:3001/sse"
+          "server_name": "http://localhost:3000/mcp",
+          "another": {
+            "url": "http://localhost:3001/mcp",
+            "transport": "http"
+          }
         }
       }
     }
+    
+    transport 支持: "http" (SSE/HTTP), "stdio" (本地进程)
     """
     if not _MCP_AVAILABLE:
         print("⚠️  langchain-mcp-adapters 未安装，跳过 MCP tools 加载")
@@ -50,23 +55,32 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
     # 收集所有 server 配置
     servers: Dict[str, Dict[str, Any]] = {}
     
-    # 方式1: 从 config.mcp.servers 读取 (简化格式: name -> url)
+    # 从 config.mcp.servers 读取
     servers_config = mcp_config.get("servers")
     if isinstance(servers_config, dict):
-        for name, url in servers_config.items():
-            if isinstance(url, str) and url:
+        for name, value in servers_config.items():
+            if isinstance(value, str) and value:
+                # 简化格式: name -> url
                 servers[name] = {
-                    "url": url,
-                    "transport": "sse",
+                    "url": value,
+                    "transport": "http",  # HTTP/SSE transport
                 }
-            elif isinstance(url, dict):
-                # 也支持完整格式: name -> {url, transport, ...}
-                servers[name] = {
-                    "url": url.get("url", ""),
-                    "transport": url.get("transport", "sse"),
-                }
+            elif isinstance(value, dict):
+                # 完整格式
+                if value.get("url"):
+                    servers[name] = {
+                        "url": value["url"],
+                        "transport": value.get("transport", "http"),
+                    }
+                elif value.get("command"):
+                    # stdio 模式
+                    servers[name] = {
+                        "command": value["command"],
+                        "args": value.get("args", []),
+                        "transport": "stdio",
+                    }
     
-    # 方式2: 从环境变量 DEEPAGENTS_MCP_SERVERS 读取 (JSON 格式)
+    # 从环境变量读取
     env_servers = os.getenv("DEEPAGENTS_MCP_SERVERS")
     if env_servers:
         try:
@@ -74,7 +88,7 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
             if isinstance(parsed, dict):
                 for name, url in parsed.items():
                     if isinstance(url, str) and url:
-                        servers[name] = {"url": url, "transport": "sse"}
+                        servers[name] = {"url": url, "transport": "http"}
         except Exception:
             pass
 
@@ -83,24 +97,23 @@ def load_mcp_tools(config: Optional[Dict[str, Any]] = None) -> List[BaseTool]:
 
     print(f"🔌 正在连接 MCP servers: {list(servers.keys())}")
     
-    # 使用 MultiServerMCPClient 连接所有 server
     tools: List[BaseTool] = []
     
     try:
-        # MultiServerMCPClient 需要特定格式的配置
-        mcp_servers_config = {}
-        for name, cfg in servers.items():
-            mcp_servers_config[name] = {
-                "url": cfg["url"],
-                "transport": cfg.get("transport", "sse"),
-            }
+        tools = asyncio.run(_load_tools_async(servers))
+        if tools:
+            print(f"✅ 已加载 {len(tools)} 个 MCP tools")
+        else:
+            print("⚠️  没有加载到任何 MCP tools")
         
-        # 同步加载 tools
-        tools = asyncio.run(_load_tools_async(mcp_servers_config))
-        print(f"✅ 已加载 {len(tools)} 个 MCP tools")
-        
+    except ExceptionGroup as eg:
+        # Python 3.11+ TaskGroup 异常
+        print(f"❌ MCP 连接失败:")
+        for exc in eg.exceptions:
+            print(f"   - {type(exc).__name__}: {exc}")
+        return []
     except Exception as e:
-        print(f"❌ MCP tools 加载失败: {e}")
+        print(f"❌ MCP tools 加载失败: {type(e).__name__}: {e}")
         return []
 
     return tools
@@ -115,16 +128,35 @@ async def _load_tools_async(servers_config: Dict[str, Dict[str, Any]]) -> List[B
 
 def _test_mcp():
     """测试 MCP 连接"""
+    print("=" * 50)
+    print("🔧 MCP 连接测试")
+    print("=" * 50)
+    
     config_path = Path("./config.json")
     if config_path.exists():
         config = json.loads(config_path.read_text(encoding="utf-8"))
+        mcp_cfg = config.get("mcp", {})
+        servers = mcp_cfg.get("servers", {})
+        print(f"\n📋 配置的 servers:")
+        for name, value in servers.items():
+            if isinstance(value, str):
+                print(f"   {name}: {value}")
+            elif isinstance(value, dict):
+                print(f"   {name}: {value.get('url') or value.get('command')}")
     else:
         config = {}
+        print("\n⚠️  config.json 不存在")
     
+    print()
     tools = load_mcp_tools(config)
-    print(f"\n已加载的 tools:")
-    for tool in tools:
-        print(f"  - {tool.name}: {tool.description[:50]}..." if len(tool.description) > 50 else f"  - {tool.name}: {tool.description}")
+    
+    if tools:
+        print(f"\n📦 已加载的 tools:")
+        for tool in tools:
+            desc = tool.description[:60] + "..." if len(tool.description) > 60 else tool.description
+            print(f"   - {tool.name}: {desc}")
+    
+    print("\n" + "=" * 50)
 
 
 if __name__ == "__main__":
