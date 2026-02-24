@@ -5,11 +5,9 @@ description: "Interact with Microsoft Outlook on macOS for email operations via 
 
 # Outlook Email Operations (macOS)
 
-Operate Microsoft Outlook on macOS via shell scripts that execute AppleScript. All scripts are in the `scripts/` subdirectory relative to this SKILL.md file.
+Operate Microsoft Outlook on macOS via AppleScript. Two execution methods available:
 
-**Prerequisites:** Microsoft Outlook for Mac installed and running.
-
-**Script Location:** All scripts are located at `skills/outlook/scripts/` relative to the project root. The scripts are self-contained with no external path dependencies — they can be invoked from any working directory using their absolute or relative path.
+**Prerequisites:** Microsoft Outlook for Mac installed and running. No extra dependencies.
 
 ## Workflow
 
@@ -17,68 +15,63 @@ Operate Microsoft Outlook on macOS via shell scripts that execute AppleScript. A
 2. **Get details** of a specific email by `MessageID`
 3. **Reply** or **compose** a new email
 
-## Operations
+---
 
-In the examples below, `SCRIPT_DIR` refers to the `scripts/` directory within this skill folder. Resolve it relative to the project root or this SKILL.md file. For example:
+## Method A: Python Module (Recommended)
 
-```bash
-# From project root:
-SCRIPT_DIR="skills/outlook/scripts"
-# Or resolve dynamically from this file's location:
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)/scripts"
+`scripts/outlook.py` — single file, supports both import and CLI usage.
+
+**Import usage** (multiple operations in one call):
+
+```python
+python3 -c "
+import sys; sys.path.insert(0, '.')
+from skills.outlook.scripts.outlook import list_emails, get_email, reply_email
+emails = list_emails(days=7)
+print(emails)
+# Then use a MessageID from the output:
+print(get_email(msg_id=12345))
+"
 ```
 
-### List Mail Folders
+**CLI usage** (one operation per call):
 
 ```bash
-bash "$SCRIPT_DIR/list_folders.sh"
+python3 skills/outlook/scripts/outlook.py list_folders
+python3 skills/outlook/scripts/outlook.py list_emails --days 7 --folder "Inbox"
+python3 skills/outlook/scripts/outlook.py search_emails --term "project" --days 14
+python3 skills/outlook/scripts/outlook.py get_email --id MESSAGE_ID
+python3 skills/outlook/scripts/outlook.py reply_email --id MESSAGE_ID --body "Thanks!"
+python3 skills/outlook/scripts/outlook.py compose_email --to "a@b.com" --subject "Hi" --body "Hello"
+python3 skills/outlook/scripts/outlook.py open_compose --to "a@b.com" --subject "Hi" --body "Hello"
 ```
 
-### List Recent Emails
+### Python API Reference
+
+| Function | Parameters | Description |
+|---|---|---|
+| `list_folders()` | — | List all mail folders |
+| `list_emails(days, folder)` | days: 1-30, folder: optional | List recent emails |
+| `search_emails(term, days, folder)` | term: required, " OR " for multi | Search emails |
+| `get_email(msg_id)` | msg_id: int | Get full email content |
+| `reply_email(msg_id, body)` | msg_id: int, body: str | Reply and send immediately |
+| `compose_email(to, subject, body, cc)` | cc: optional | Send new email immediately |
+| `open_compose(to, subject, body, cc, bcc)` | cc/bcc: optional | Open compose window (no send) |
+
+---
+
+## Method B: Shell Scripts
+
+Individual scripts in `scripts/`, each performs one operation.
 
 ```bash
-bash "$SCRIPT_DIR/list_emails.sh" [--days N] [--folder NAME]
+bash scripts/list_folders.sh
+bash scripts/list_emails.sh --days 7 --folder "Inbox"
+bash scripts/search_emails.sh --term "keyword" --days 14
+bash scripts/get_email.sh --id MESSAGE_ID
+bash scripts/reply_email.sh --id MESSAGE_ID --body "Reply text"
+bash scripts/compose_email.sh --to "a@b.com" --subject "Hi" --body "Hello" [--cc "cc@b.com"]
+bash scripts/open_compose.sh --to "a@b.com" --subject "Hi" --body "Hello" [--cc "cc@b.com"] [--bcc "bcc@b.com"]
 ```
 
-- `--days N` : Days to look back (1-30, default: 7)
-- `--folder NAME` : Folder name (default: Inbox)
-
-### Search Emails
-
-```bash
-bash "$SCRIPT_DIR/search_emails.sh" --term "keyword" [--days N] [--folder NAME]
-```
-
-- `--term TEXT` : Search keyword (required). Use `" OR "` to combine terms.
-- `--days N` : Days to look back (1-30, default: 7)
-- `--folder NAME` : Folder name (default: Inbox)
-
-### Get Email Details
-
-```bash
-bash "$SCRIPT_DIR/get_email.sh" --id MESSAGE_ID
-```
-
-### Reply to Email
-
-```bash
-bash "$SCRIPT_DIR/reply_email.sh" --id MESSAGE_ID --body "Reply text"
-```
-
-⚠️ Reply is sent immediately.
-
-### Compose and Send Email
-
-```bash
-bash "$SCRIPT_DIR/compose_email.sh" --to "email" --subject "subject" --body "body" [--cc "email"]
-```
-
-⚠️ Email is sent immediately.
-
-### Open Compose Window (No Auto-Send)
-
-```bash
-bash "$SCRIPT_DIR/open_compose.sh" --to "email" --subject "subject" --body "body" [--cc "email"] [--bcc "email"]
-```
-
-Opens Outlook compose window with pre-filled content for manual review before sending.
+> Note: Script paths above are relative to the `skills/outlook/` directory.
