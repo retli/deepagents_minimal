@@ -5,7 +5,7 @@ description: "Interact with Microsoft Outlook on macOS for email operations via 
 
 # Outlook Email Operations (macOS)
 
-Operate Microsoft Outlook on macOS via AppleScript. Two execution methods available:
+Operate Microsoft Outlook on macOS via `scripts/outlook.py`. Supports both import and CLI usage.
 
 **Prerequisites:** Microsoft Outlook for Mac installed and running. No extra dependencies.
 
@@ -15,11 +15,7 @@ Operate Microsoft Outlook on macOS via AppleScript. Two execution methods availa
 2. **Get details** of a specific email by `MessageID`
 3. **Reply** or **compose** a new email
 
----
-
-## Method A: Python Module (Recommended)
-
-`scripts/outlook.py` — single file, supports both import and CLI usage.
+## Usage
 
 **Import usage** (multiple operations in one call):
 
@@ -46,7 +42,40 @@ python3 skills/outlook/scripts/outlook.py compose_email --to "a@b.com" --subject
 python3 skills/outlook/scripts/outlook.py open_compose --to "a@b.com" --subject "Hi" --body "Hello"
 ```
 
-### Python API Reference
+## HTML Content Support
+
+`reply_email`, `compose_email`, and `open_compose` default to `html=True`, meaning the `body` parameter is always treated as HTML. Plain text works fine as HTML too. Pass `html=False` only if you explicitly need plain text mode.
+
+**Example — send a formatted reply with table:**
+
+```python
+python3 -c "
+import sys; sys.path.insert(0, '.')
+from skills.outlook.scripts.outlook import reply_email
+
+html_body = '''
+<h2>Weekly Report</h2>
+<table border=\"1\" cellpadding=\"8\" cellspacing=\"0\">
+  <tr><th>Item</th><th>Status</th></tr>
+  <tr><td>Task A</td><td style=\"color:green\">Done</td></tr>
+  <tr><td>Task B</td><td style=\"color:orange\">In Progress</td></tr>
+</table>
+<p>Please review. Thanks!</p>
+'''
+print(reply_email(msg_id=12345, body=html_body, html=True))
+"
+```
+
+**CLI with `--html` flag:**
+
+```bash
+python3 skills/outlook/scripts/outlook.py compose_email \
+  --to "a@b.com" --subject "Report" \
+  --body "<h1>Hello</h1><p>See <b>attached</b> report.</p>" \
+  --html
+```
+
+## API Reference
 
 | Function | Parameters | Description |
 |---|---|---|
@@ -54,24 +83,6 @@ python3 skills/outlook/scripts/outlook.py open_compose --to "a@b.com" --subject 
 | `list_emails(days, folder)` | days: 1-30, folder: optional | List recent emails |
 | `search_emails(term, days, folder)` | term: required, " OR " for multi | Search emails |
 | `get_email(msg_id)` | msg_id: int | Get full email content |
-| `reply_email(msg_id, body)` | msg_id: int, body: str | Reply and send immediately |
-| `compose_email(to, subject, body, cc)` | cc: optional | Send new email immediately |
-| `open_compose(to, subject, body, cc, bcc)` | cc/bcc: optional | Open compose window (no send) |
-
----
-
-## Method B: Shell Scripts
-
-Individual scripts in `scripts/`, each performs one operation.
-
-```bash
-bash scripts/list_folders.sh
-bash scripts/list_emails.sh --days 7 --folder "Inbox"
-bash scripts/search_emails.sh --term "keyword" --days 14
-bash scripts/get_email.sh --id MESSAGE_ID
-bash scripts/reply_email.sh --id MESSAGE_ID --body "Reply text"
-bash scripts/compose_email.sh --to "a@b.com" --subject "Hi" --body "Hello" [--cc "cc@b.com"]
-bash scripts/open_compose.sh --to "a@b.com" --subject "Hi" --body "Hello" [--cc "cc@b.com"] [--bcc "bcc@b.com"]
-```
-
-> Note: Script paths above are relative to the `skills/outlook/` directory.
+| `reply_email(msg_id, body, html)` | html: default False | Reply and send immediately |
+| `compose_email(to, subject, body, cc, html)` | cc/html: optional | Send new email immediately |
+| `open_compose(to, subject, body, cc, bcc, html)` | cc/bcc/html: optional | Open compose window (no send) |

@@ -371,8 +371,14 @@ def get_email(msg_id: int) -> str:
     return out if ok else f"ERROR: {out}"
 
 
-def reply_email(msg_id: int, body: str) -> str:
-    """Reply to an email by message ID. Sends immediately."""
+def reply_email(msg_id: int, body: str, html: bool = True) -> str:
+    """Reply to an email by message ID. Sends immediately.
+    
+    Args:
+        msg_id: Message ID from list/search results.
+        body: Reply content. Plain text by default, or HTML if html=True.
+        html: If True, body is treated as HTML content.
+    """
     if not msg_id:
         return "ERROR: message ID is required"
     if not body:
@@ -382,6 +388,10 @@ def reply_email(msg_id: int, body: str) -> str:
         return err
 
     escaped_body = _escape(body)
+    if html:
+        set_content = f'set html content of replyMsg to "{escaped_body}"'
+    else:
+        set_content = f'set content of replyMsg to "{escaped_body}" & return & return & content of replyMsg'
     script = f'''
     tell application "Microsoft Outlook"
         set targetMsg to message id {msg_id}
@@ -390,7 +400,7 @@ def reply_email(msg_id: int, body: str) -> str:
         end if
 
         set replyMsg to reply to targetMsg without opening window
-        set content of replyMsg to "{escaped_body}" & return & return & content of replyMsg
+        {set_content}
         send replyMsg
 
         set senderName to ""
@@ -406,8 +416,16 @@ def reply_email(msg_id: int, body: str) -> str:
     return out if ok else f"ERROR: {out}"
 
 
-def compose_email(to: str, subject: str, body: str, cc: str | None = None) -> str:
-    """Compose and send a new email immediately."""
+def compose_email(to: str, subject: str, body: str, cc: str | None = None, html: bool = True) -> str:
+    """Compose and send a new email immediately.
+    
+    Args:
+        to: Recipient email address.
+        subject: Email subject.
+        body: Email content. Plain text by default, or HTML if html=True.
+        cc: Optional CC email address.
+        html: If True, body is treated as HTML content.
+    """
     if not to or not subject or not body:
         return "ERROR: --to, --subject, --body are all required"
     err = _check_outlook()
@@ -418,12 +436,13 @@ def compose_email(to: str, subject: str, body: str, cc: str | None = None) -> st
     if cc:
         cc_part = f'make new cc recipient at newMessage with properties {{email address:{{address:"{_escape(cc)}"}}}}'
 
+    content_prop = "html content" if html else "content"
     script = f'''
     tell application "Microsoft Outlook"
         activate
         set newMessage to make new outgoing message
         set subject of newMessage to "{_escape(subject)}"
-        set content of newMessage to "{_escape(body)}"
+        set {content_prop} of newMessage to "{_escape(body)}"
         make new to recipient at newMessage with properties {{email address:{{address:"{_escape(to)}"}}}}
         {cc_part}
         send newMessage
@@ -433,8 +452,17 @@ def compose_email(to: str, subject: str, body: str, cc: str | None = None) -> st
     return f"Email sent successfully to: {to}" if ok else f"ERROR: {out}"
 
 
-def open_compose(to: str, subject: str, body: str, cc: str | None = None, bcc: str | None = None) -> str:
-    """Open Outlook compose window with pre-filled content (does NOT auto-send)."""
+def open_compose(to: str, subject: str, body: str, cc: str | None = None, bcc: str | None = None, html: bool = True) -> str:
+    """Open Outlook compose window with pre-filled content (does NOT auto-send).
+    
+    Args:
+        to: Recipient email address.
+        subject: Email subject.
+        body: Email content. Plain text by default, or HTML if html=True.
+        cc: Optional CC email address.
+        bcc: Optional BCC email address.
+        html: If True, body is treated as HTML content.
+    """
     if not to or not subject or not body:
         return "ERROR: --to, --subject, --body are all required"
     err = _check_outlook()
@@ -448,12 +476,13 @@ def open_compose(to: str, subject: str, body: str, cc: str | None = None, bcc: s
     if bcc:
         bcc_part = f'make new bcc recipient at newMessage with properties {{email address:{{address:"{_escape(bcc)}"}}}}'
 
+    content_prop = "html content" if html else "content"
     script = f'''
     tell application "Microsoft Outlook"
         activate
         set newMessage to make new outgoing message
         set subject of newMessage to "{_escape(subject)}"
-        set content of newMessage to "{_escape(body)}"
+        set {content_prop} of newMessage to "{_escape(body)}"
         make new to recipient at newMessage with properties {{email address:{{address:"{_escape(to)}"}}}}
         {cc_part}
         {bcc_part}
@@ -487,12 +516,14 @@ def main():
     p = sub.add_parser("reply_email")
     p.add_argument("--id", type=int, required=True, dest="msg_id")
     p.add_argument("--body", required=True)
+    p.add_argument("--html", action="store_true", help="Treat body as HTML content")
 
     p = sub.add_parser("compose_email")
     p.add_argument("--to", required=True)
     p.add_argument("--subject", required=True)
     p.add_argument("--body", required=True)
     p.add_argument("--cc", default=None)
+    p.add_argument("--html", action="store_true", help="Treat body as HTML content")
 
     p = sub.add_parser("open_compose")
     p.add_argument("--to", required=True)
@@ -500,6 +531,7 @@ def main():
     p.add_argument("--body", required=True)
     p.add_argument("--cc", default=None)
     p.add_argument("--bcc", default=None)
+    p.add_argument("--html", action="store_true", help="Treat body as HTML content")
 
     args = parser.parse_args()
     cmd = args.command
@@ -513,11 +545,11 @@ def main():
     elif cmd == "get_email":
         print(get_email(msg_id=args.msg_id))
     elif cmd == "reply_email":
-        print(reply_email(msg_id=args.msg_id, body=args.body))
+        print(reply_email(msg_id=args.msg_id, body=args.body, html=args.html))
     elif cmd == "compose_email":
-        print(compose_email(to=args.to, subject=args.subject, body=args.body, cc=args.cc))
+        print(compose_email(to=args.to, subject=args.subject, body=args.body, cc=args.cc, html=args.html))
     elif cmd == "open_compose":
-        print(open_compose(to=args.to, subject=args.subject, body=args.body, cc=args.cc, bcc=args.bcc))
+        print(open_compose(to=args.to, subject=args.subject, body=args.body, cc=args.cc, bcc=args.bcc, html=args.html))
 
 
 if __name__ == "__main__":
