@@ -24,8 +24,6 @@ if ! pgrep -x "Microsoft Outlook" > /dev/null 2>&1; then
     exit 1
 fi
 
-THRESHOLD_DATE=$(date -v-"${DAYS}"d +"%Y-%m-%d")
-
 if [[ -n "$FOLDER" ]]; then
     FOLDER_REF="
                 set targetFolder to missing value
@@ -58,7 +56,6 @@ else
 fi
 
 # Parse OR terms into AppleScript condition
-# IFS on " OR " is tricky; use sed to split
 CONDITION=""
 IFS=$'\n' read -d '' -ra TERMS < <(echo "$TERM" | sed 's/ OR /\n/g' && printf '\0')
 for t in "${TERMS[@]}"; do
@@ -75,10 +72,13 @@ done
 if [[ -z "$CONDITION" ]]; then echo "ERROR: No valid search terms"; exit 1; fi
 
 osascript <<APPLESCRIPT
+-- Calculate threshold date OUTSIDE the tell block to avoid
+-- Outlook hijacking the 'date' keyword
+set thresholdDate to (current date) - (${DAYS} * days)
+
 tell application "Microsoft Outlook"
     ${FOLDER_REF}
 
-    set thresholdDate to date "${THRESHOLD_DATE}"
     set resultText to ""
     set emailCount to 0
     set emailMessages to messages of targetFolder

@@ -261,10 +261,13 @@ def list_recent_emails(days: int = 7, folder_name: Optional[str] = None) -> str:
         rd = RECORD_DELIMITER
         
         script = f'''
+        -- Calculate threshold date OUTSIDE the tell block to avoid
+        -- Outlook hijacking the 'date' keyword
+        set thresholdDate to (current date) - ({days} * days)
+        
         tell application "Microsoft Outlook"
             {folder_ref}
             
-            set thresholdDate to date "{threshold_str}"
             set resultText to ""
             set emailMessages to messages of targetFolder
             
@@ -453,10 +456,13 @@ def search_emails(search_term: str, days: int = 7, folder_name: Optional[str] = 
         rd = RECORD_DELIMITER
 
         script = f'''
+        -- Calculate threshold date OUTSIDE the tell block to avoid
+        -- Outlook hijacking the 'date' keyword
+        set thresholdDate to (current date) - ({days} * days)
+        
         tell application "Microsoft Outlook"
             {folder_ref}
             
-            set thresholdDate to date "{threshold_str}"
             set resultText to ""
             set emailMessages to messages of targetFolder
             
