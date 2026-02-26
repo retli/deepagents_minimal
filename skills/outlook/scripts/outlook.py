@@ -2,27 +2,16 @@
 """
 Outlook Email Operations for macOS via AppleScript.
 
-Usage:
-    # As importable module (recommended for agent - single run_command, multiple ops):
+Usage (import mode):
     python3 -c "
+    import sys; sys.path.insert(0, '.')
     from skills.outlook.scripts.outlook import list_emails, get_email
     print(list_emails(days=7))
     print(get_email(12345))
     "
-
-    # As CLI tool:
-    python3 skills/outlook/scripts/outlook.py list_folders
-    python3 skills/outlook/scripts/outlook.py list_emails --days 7 --folder Inbox
-    python3 skills/outlook/scripts/outlook.py search_emails --term "project" --days 14
-    python3 skills/outlook/scripts/outlook.py get_email --id 12345
-    python3 skills/outlook/scripts/outlook.py reply_email --id 12345 --body "Thanks!"
-    python3 skills/outlook/scripts/outlook.py compose_email --to "a@b.com" --subject "Hi" --body "Hello"
-    python3 skills/outlook/scripts/outlook.py open_compose --to "a@b.com" --subject "Hi" --body "Hello"
 """
 
 import subprocess
-import sys
-import argparse
 
 
 def _run_applescript(script: str) -> tuple:
@@ -492,65 +481,3 @@ def open_compose(to: str, subject: str, body: str, cc: str | None = None, bcc: s
     ok, out = _run_applescript(script)
     return "Compose window opened with pre-filled content." if ok else f"ERROR: {out}"
 
-
-# ── CLI entry point ──────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser(description="Outlook email operations (macOS)")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    sub.add_parser("list_folders")
-
-    p = sub.add_parser("list_emails")
-    p.add_argument("--days", type=int, default=7)
-    p.add_argument("--folder", default=None)
-
-    p = sub.add_parser("search_emails")
-    p.add_argument("--term", required=True)
-    p.add_argument("--days", type=int, default=7)
-    p.add_argument("--folder", default=None)
-
-    p = sub.add_parser("get_email")
-    p.add_argument("--id", type=int, required=True, dest="msg_id")
-
-    p = sub.add_parser("reply_email")
-    p.add_argument("--id", type=int, required=True, dest="msg_id")
-    p.add_argument("--body", required=True)
-    p.add_argument("--html", action="store_true", help="Treat body as HTML content")
-
-    p = sub.add_parser("compose_email")
-    p.add_argument("--to", required=True)
-    p.add_argument("--subject", required=True)
-    p.add_argument("--body", required=True)
-    p.add_argument("--cc", default=None)
-    p.add_argument("--html", action="store_true", help="Treat body as HTML content")
-
-    p = sub.add_parser("open_compose")
-    p.add_argument("--to", required=True)
-    p.add_argument("--subject", required=True)
-    p.add_argument("--body", required=True)
-    p.add_argument("--cc", default=None)
-    p.add_argument("--bcc", default=None)
-    p.add_argument("--html", action="store_true", help="Treat body as HTML content")
-
-    args = parser.parse_args()
-    cmd = args.command
-
-    if cmd == "list_folders":
-        print(list_folders())
-    elif cmd == "list_emails":
-        print(list_emails(days=args.days, folder=args.folder))
-    elif cmd == "search_emails":
-        print(search_emails(term=args.term, days=args.days, folder=args.folder))
-    elif cmd == "get_email":
-        print(get_email(msg_id=args.msg_id))
-    elif cmd == "reply_email":
-        print(reply_email(msg_id=args.msg_id, body=args.body, html=args.html))
-    elif cmd == "compose_email":
-        print(compose_email(to=args.to, subject=args.subject, body=args.body, cc=args.cc, html=args.html))
-    elif cmd == "open_compose":
-        print(open_compose(to=args.to, subject=args.subject, body=args.body, cc=args.cc, bcc=args.bcc, html=args.html))
-
-
-if __name__ == "__main__":
-    main()
